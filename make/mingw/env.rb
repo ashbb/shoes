@@ -2,6 +2,9 @@ require File.expand_path('make/make')
 extend Make
 
 EXT_RUBY = "../mingw"
+EXT_RUBY_BIN = "#{EXT_RUBY}/bin"
+EXT_RUBY_LIB = "#{EXT_RUBY}/lib"
+EXT_RUBY_LIBRUBY = "#{EXT_RUBY}/lib/ruby/#{RUBY_V}"
 
 # TODO: We really shouldn't perform actions just by including a file
 if ENV['VIDEO']
@@ -14,12 +17,9 @@ if ENV['VIDEO']
   copy_files vlc_deps + '/lib', EXT_RUBY
 end
 
-# use the platform Ruby claims
-require 'rbconfig'
-
 CC = ENV['CC'] ? ENV['CC'] : "gcc"
 file_list = ["shoes/*.c"] + %w{shoes/native/windows.c shoes/http/winhttp.c shoes/http/windownload.c}
-  
+
 SRC = FileList[*file_list]
 OBJ = SRC.map do |x|
   x.gsub(/\.\w+$/, '.o')
@@ -39,12 +39,12 @@ else
   VLC_CFLAGS = VLC_LIB = ''
 end
 
-LINUX_CFLAGS = %[-Wall -I#{ENV['SHOES_DEPS_PATH'] || "/usr"}/include #{CAIRO_CFLAGS} #{PANGO_CFLAGS} #{VLC_CFLAGS} -I#{Config::CONFIG['archdir']}]
-if Config::CONFIG['rubyhdrdir']
-  LINUX_CFLAGS << " -I#{Config::CONFIG['rubyhdrdir']} -I#{Config::CONFIG['rubyhdrdir']}/#{RUBY_PLATFORM}"
+LINUX_CFLAGS = %[-Wall -I#{ENV['SHOES_DEPS_PATH'] || "/usr"}/include #{CAIRO_CFLAGS} #{PANGO_CFLAGS} -I#{RbConfig::CONFIG['archdir']}]
+if RbConfig::CONFIG['rubyhdrdir']
+  LINUX_CFLAGS << " -I#{RbConfig::CONFIG['rubyhdrdir']} -I#{RbConfig::CONFIG['rubyhdrdir']}/#{SHOES_RUBY_ARCH}"
 end
 LINUX_LIB_NAMES = %W[#{RUBY_SO} cairo pangocairo-1.0 ungif]
-  
+
 FLAGS.each do |flag|
   LINUX_CFLAGS << " -D#{flag}" if ENV[flag]
 end
@@ -63,7 +63,7 @@ LINUX_LDFLAGS = " -DBUILD_DLL -lungif -ljpeg -lglib-2.0 -lgobject-2.0 -lgio-2.0 
 LINUX_LDFLAGS << ' -lshell32 -lkernel32 -luser32 -lgdi32 -lcomdlg32 -lcomctl32 -lole32 -loleaut32 -ladvapi32 -loleacc -lwinhttp'
 LINUX_CFLAGS << " -DVLC_0_8"  if ENV['VIDEO'] and VLC_0_8
 cp APP['icons']['win32'], "shoes/appwin32.ico"
-  
+
 LINUX_LIBS = LINUX_LIB_NAMES.map { |x| "-l#{x}" }.join(' ')
 
-LINUX_LIBS << " -L#{Config::CONFIG['libdir']} #{CAIRO_LIB} #{PANGO_LIB} #{VLC_LIB}"
+LINUX_LIBS << " -L#{RbConfig::CONFIG['libdir']} #{CAIRO_LIB} #{PANGO_LIB} #{VLC_LIB}"

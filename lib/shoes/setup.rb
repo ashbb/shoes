@@ -1,7 +1,7 @@
 require 'rubygems'
 require 'rubygems/dependency_installer'
 module Gem
-  @ruby = (File.join(Config::CONFIG['bindir'], 'shoes') + Config::CONFIG['EXEEXT']).
+  @ruby = (File.join(RbConfig::CONFIG['bindir'], 'shoes') + RbConfig::CONFIG['EXEEXT']).
           sub(/.*\s.*/m, '"\&"') + " --ruby"
 end
 class << Gem::Ext::ExtConfBuilder
@@ -24,12 +24,13 @@ class Shoes::Setup
 
   def self.init
     gem_reset
-    install_sources if Gem.source_index.find_name('sources').empty?
+    Gem::Specification.find_by_name('sources')
+  rescue Gem::LoadError
+    install_sources
   end
 
   def self.gem_reset
     Gem.use_paths(GEM_DIR, [GEM_DIR, GEM_CENTRAL_DIR])
-    Gem.source_index.refresh!
   end
 
   def self.setup_app(setup)
@@ -97,11 +98,27 @@ class Shoes::Setup
   def gem name, version = nil
     arg = "#{name} #{version}".strip
     name, version = arg.split(/\s+/, 2)
-    if Gem.source_index.find_name(name, version).empty?
-      @steps << [:gem, arg]
-    else
-      activate_gem(name, version)
-    end
+    Gem::Specification.find_by_name(name, version)
+  rescue Gem::LoadError
+    @steps << [:gem, arg]
+  end
+
+  # TODO: add GUI
+  # 
+  # Note: this feature is experimental, and uses private Bundler APIs. Don't
+  # expect this to always work, though it seems to for now. Bundler expects
+  # to be activated before the rest of your application. Please see the
+  # notes here: https://github.com/shoes/shoes/commit/9114457d487353a0c16e521284ad164835c64b4e#diff-0
+  def bundler options = {}
+    bundler_version = options[:version] || Gem::Requirement.default
+    bundler_file = options[:file] || "Gemfile"
+    Gem::Specification.find_by_name( "bundler", bundler_version ).activate
+  rescue Gem::LoadError
+    Gem::DependencyInstaller.new.install("bundler", bundler_version)
+  ensure
+    require 'bundler'
+    require 'bundler/cli'
+    Bundler::CLI.new(:gemfile => bundler_file).install
   end
 
   def source uri
@@ -109,8 +126,7 @@ class Shoes::Setup
   end
 
   def activate_gem(name, version)
-    gem = Gem.source_index.find_name(name, version).first
-    Gem.activate(gem.name, "= #{gem.version}")
+    Gem::Specification.find_by_name(name, version).activate
   end
 
   def start(app)
@@ -125,7 +141,9 @@ class Shoes::Setup
         name, version = arg.split(/\s+/, 2)
         count += 1
         ui.say "Looking for #{name}"
-        if Gem.source_index.find_name(name, version).empty?
+        begin
+          Gem::Specification.find_by_name(name, version)
+        rescue Gem::LoadError
           ui.title "Installing #{name}"
           installer = Gem::DependencyInstaller.new
           begin
@@ -287,6 +305,20 @@ class Gem::ShoesFace
     end
   end
 
+  class SilentDownloadReporter
+    def initialize(out_stream, *args)
+    end
+
+    def fetch(filename, filesize)
+    end
+
+    def update(current)
+    end
+
+    def done
+    end
+  end
+
   def initialize app
     @title, @status, @prog, = app.slot.contents[-1].contents
   end
@@ -324,18 +356,12 @@ class Gem::ShoesFace
     say(msg)
     ask(quiz) if quiz
   end
-
+  def download_reporter(*args)
+    SilentDownloadReporter.new(nil, *args)
+  end
   def progress_reporter(*args)
     ProgressReporter.new(@prog, @status, *args)
   end
-
-  # does nothing other than being conform to the API
-  def download_reporter(*args)
-    # this is dirty but nothing gets ever called on "nothing" - it is just so
-    # the interface is satisfied. Maybe we write our own reporter some day.
-    Gem::StreamUI::SilentDownloadReporter.new("nothing",*args)
-  end
-
   def method_missing(*args)
     p args
     nil
